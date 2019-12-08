@@ -1,0 +1,109 @@
+version: "3.7"
+services:
+  wm-backend:
+    container_name: wm-backend-full
+    image: docker.perfectartco.com/wm-aggregator:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - wm-storage
+      - wm-message-broker
+    environment:
+      - PORTFOLIO_DB_HOST=wm-storage:5432
+      - PORTFOLIO_DB_NAME=postgres
+      - WM_MODEL_PROFITCALCULATOR_SERVICE_URI=http://wm-profit-calculator:8083/api/v1/
+      - WM_MODEL_CALCULATOR_SERVICE_URI=http://wm-calculator:80/api/v1/
+      - spring.rabbitmq.host=wm-message-broker
+    networks:
+      - wm-backend-full
+
+  wm-storage:
+    container_name: wm-storage-postgres-full
+    image: postgres:11.4-alpine
+    ports:
+      - "4432:5432"
+    networks:
+      - wm-backend-full
+
+  wm-frontend:
+    container_name: wm-frontend-full
+    image: docker.perfectartco.com/wm-frontend:latest
+    networks:
+      - wm-backend-full
+
+  wm-profit-calculator:
+    container_name: wm-profit-calculator-full
+    image: docker.perfectartco.com/wm-profit-calculator:latest
+    depends_on:
+      - wm-backend
+      - wm-message-broker
+    environment:
+      - PORTFOLIO_DB_HOST=wm-storage:5432
+      - PORTFOLIO_DB_NAME=postgres
+      - spring.rabbitmq.host=wm-message-broker
+    ports:
+      - "8083:8083"
+    networks:
+      - wm-backend-full
+
+  wm-intake-excel:
+    container_name: wm-intake-excel-full
+    image: docker.perfectartco.com/wm-intake-excel:latest
+    depends_on:
+      - wm-backend
+      - wm-message-broker
+    environment:
+      - PORTFOLIO_DB_HOST=wm-storage:5432
+      - PORTFOLIO_DB_NAME=postgres
+      - spring.rabbitmq.host=wm-message-broker
+    ports:
+      - "8081:8081"
+    networks:
+      - wm-backend-full
+
+  wm-calculator:
+    image: docker.perfectartco.com/wm-calculator:latest
+    container_name: wm-models-full
+    environment:
+    - wm.model.aggregator.service.uri=http://wm-backend:8080
+    ports:
+    - "8084:80"
+    networks:
+    - wm-backend-full
+
+  wm-gateway:
+    container_name: wm-gateway
+    image: wm-gateway
+    ports:
+      - "80:80"
+    depends_on:
+      - wm-backend
+    networks:
+      - wm-backend-full
+
+  wm-functional-tests:
+    container_name: wm-functional-tests-full
+    build:
+      context: .
+      dockerfile: docker/wm-functional-tests/Dockerfile
+    entrypoint: ["/bin/sh", "./docker/wait-for-it.sh", "wm-backend:8080", "--timeout=120", "--", "pytest"]
+    depends_on:
+      - wm-backend
+    environment:
+      - WM_ENV=local
+    networks:
+      - wm-backend-full
+
+  wm-message-broker:
+    container_name: wm-message-broker-full
+    image: rabbitmq:3-management
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    networks:
+      - wm-backend-full
+
+networks:
+  wm-backend-full:
+    name: wm-backend-full
+    driver: bridge

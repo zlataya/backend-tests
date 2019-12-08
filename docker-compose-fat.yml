@@ -1,0 +1,82 @@
+version: "3.7"
+services:
+  wm-backend:
+    container_name: wm-backend-full
+    image: docker.perfectartsys.tk/wm-aggregator:stable
+    ports:
+      - "8080:8080"
+    depends_on:
+      - wm-storage
+    command: ["./wait-for-it.sh", "127.0.0.1:4432", "--", "timeout", "5"]
+    environment:
+      - PORTFOLIO_DB_HOST=wm-storage:5432
+      - PORTFOLIO_DB_NAME=postgres
+    networks:
+      - wm-backend-full
+
+  wm-storage:
+    container_name: wm-storage-postgres-full
+    image: postgres:10.7-alpine
+    volumes:
+      - ./dump-fat.sql:/docker-entrypoint-initdb.d/dump.sql
+    ports:
+      - "4432:5432"
+    networks:
+      - wm-backend-full
+
+#  wm-frontend:
+#    container_name: wm-frontend-full
+#    image: wm-frontend
+#    networks:
+#      - wm-backend-full
+
+  wm-profit-calculator:
+    container_name: wm-profit-calculator-full
+    image: docker.perfectartsys.tk/wm-profit-calculator:stable
+    depends_on:
+      - wm-backend
+    environment:
+      - PORTFOLIO_DB_HOST=wm-storage:5432
+      - PORTFOLIO_DB_NAME=postgres
+    ports:
+      - "8083:8083"
+    networks:
+      - wm-backend-full
+
+  wm-intake-excel:
+    container_name: wm-intake-excel-full
+    image: docker.perfectartsys.tk/wm-intake-excel:stable
+    depends_on:
+      - wm-backend
+    environment:
+      - PORTFOLIO_DB_HOST=wm-storage:5432
+      - PORTFOLIO_DB_NAME=postgres
+    ports:
+      - "8081:8081"
+    networks:
+      - wm-backend-full
+
+  wm-calculator:
+    container_name: wm-calculator-full
+    image: docker.perfectartsys.tk/wm-calculator:stable
+    environment:
+      - wm.model.aggregator.service.uri=http://wm-backend:8080
+    ports:
+      - "8084:8084"
+    networks:
+      - wm-backend-full
+
+  wm-functional-tests:
+    container_name:  wm-functional-tests-full
+    build:
+      context: .
+      dockerfile: docker/wm-functional-tests/Dockerfile
+    depends_on:
+      - wm-backend
+    command: ["./wait-for-it.sh", "127.0.0.1:8080", "--", "timeout", "5"]
+
+
+networks:
+  wm-backend-full:
+    name: wm-backend-full
+    driver: bridge
